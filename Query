@@ -1,0 +1,192 @@
+----- Membuat DataBase Manajemen Paket -----
+create database DB_Paket
+----- Menggunakan DataBase Manajemen Paket -----
+use   DB_Paket
+-- Membuat Tabel Paket (SQL Server)
+CREATE TABLE pak_mspaket (
+    pak_id VARCHAR(10) PRIMARY KEY,
+    pak_nama_pemilik VARCHAR(255),
+    pak_id_jenis VARCHAR(10),
+    pak_tanggal_sampai DATE,
+    pak_nama_pengirim VARCHAR(255),
+    pak_status VARCHAR(20),
+    CONSTRAINT fk_paket_jenis FOREIGN KEY (pak_id_jenis) REFERENCES pak_msjenispaket(pak_id_jenis)
+);
+
+-- Membuat Tabel Jenis Paket (SQL Server)
+CREATE TABLE pak_msjenispaket (
+    pak_id_jenis VARCHAR(10) PRIMARY KEY,
+    pak_nama_jenis VARCHAR(255)
+);
+
+
+-- Membuat Tabel User (SQL Server)
+CREATE TABLE pak_msuser (
+    pak_id_user VARCHAR(10) PRIMARY KEY,
+    pak_nama_user VARCHAR(255),
+    pak_username VARCHAR(50),
+    pak_password VARCHAR(255),
+    pak_foto IMAGE,
+    pak_role VARCHAR(50)
+);
+
+-- Membuat Tabel Transaksi Pengambilan Paket (SQL Server)
+CREATE TABLE pak_mstransaksipengambilan (
+    pak_id_transaksi INT PRIMARY KEY IDENTITY(1,1),
+    pak_id_paket VARCHAR(10),
+    pak_tanggal_pengambilan DATE,
+    pak_status_pengambilan VARCHAR(20),
+    CONSTRAINT fk_transaksi_paket FOREIGN KEY (pak_id_paket) REFERENCES pak_mspaket(pak_id)
+);
+
+------------------------------------------- Store Procedure ID Otomatis ---------------------------------------------
+--- ID Jenis Paket ---
+CREATE PROCEDURE sp_generateNextJenisPaketID
+    @newJenisPaketID VARCHAR(10) OUTPUT
+AS
+BEGIN
+    DECLARE @lastJenisPaketID INT;
+
+    -- Get the last jenis paket ID
+    SELECT @lastJenisPaketID = ISNULL(MAX(CAST(SUBSTRING(pak_id_jenis, 4, LEN(pak_id_jenis) - 3) AS INT)), 0)
+    FROM pak_msjenispaket;
+
+    -- Increment the last jenis paket ID by 1
+    SET @lastJenisPaketID = @lastJenisPaketID + 1;
+    
+    -- Generate the new jenis paket ID
+    SET @newJenisPaketID = 'JPK' + RIGHT('000' + CAST(@lastJenisPaketID AS VARCHAR(3)), 3);
+END;
+--- ID Paket ---
+CREATE PROCEDURE sp_generateNextPaketID
+    @newPaketID VARCHAR(10) OUTPUT
+AS
+BEGIN
+    DECLARE @lastPaketID INT;
+
+    -- Get the last paket ID
+    SELECT @lastPaketID = ISNULL(MAX(CAST(SUBSTRING(pak_id, 4, LEN(pak_id) - 3) AS INT)), 0)
+    FROM pak_mspaket;
+
+    -- Increment the last paket ID by 1
+    SET @lastPaketID = @lastPaketID + 1;
+    
+    -- Generate the new paket ID
+    SET @newPaketID = 'PKT' + RIGHT('000' + CAST(@lastPaketID AS VARCHAR(3)), 3);
+END;
+
+--- Insert Jenis Paket ---
+CREATE PROCEDURE sp_addJenisPaket
+    @pak_nama_jenis VARCHAR(255)
+AS
+BEGIN
+    DECLARE @pak_id_jenis VARCHAR(10);
+
+    -- Call the stored procedure to generate the next jenis paket ID
+    EXEC sp_generateNextJenisPaketID @newJenisPaketID = @pak_id_jenis OUTPUT;
+
+    -- Insert the new jenis paket with the generated ID
+    INSERT INTO pak_msjenispaket (pak_id_jenis, pak_nama_jenis)
+    VALUES (@pak_id_jenis, @pak_nama_jenis);
+END;
+
+--- Insert Paket ---
+CREATE PROCEDURE sp_addPaket
+    @pak_nama_pemilik VARCHAR(255),
+    @pak_id_jenis VARCHAR(10),
+    @pak_tanggal_sampai DATE = NULL, -- Memberikan nilai default NULL untuk tanggal
+    @pak_nama_pengirim VARCHAR(255),
+    @pak_status VARCHAR(20) = 'Belum Diambil' -- Memberikan nilai default 'Belum Diambil'
+AS
+BEGIN
+    DECLARE @pak_id VARCHAR(10);
+
+    -- Panggil stored procedure untuk menghasilkan ID paket berikutnya
+    EXEC sp_generateNextPaketID @newPaketID = @pak_id OUTPUT;
+
+    -- Set @pak_tanggal_sampai ke tanggal sekarang jika tidak disediakan
+    IF @pak_tanggal_sampai IS NULL
+        SET @pak_tanggal_sampai = GETDATE(); -- Gunakan GETDATE() untuk SQL Server, SYSDATETIME() untuk database lain
+
+    -- Masukkan paket baru dengan ID yang dihasilkan
+    INSERT INTO pak_mspaket (pak_id, pak_nama_pemilik, pak_id_jenis, pak_tanggal_sampai, pak_nama_pengirim, pak_status)
+    VALUES (@pak_id, @pak_nama_pemilik, @pak_id_jenis, @pak_tanggal_sampai, @pak_nama_pengirim, @pak_status);
+END;
+
+---- Update Jenis Paket ----
+CREATE PROCEDURE sp_updateJenisPaket
+    @pak_id_jenis VARCHAR(10),
+    @pak_nama_jenis VARCHAR(255)
+AS
+BEGIN
+    -- Update the jenis paket with the specified ID
+    UPDATE pak_msjenispaket
+    SET pak_nama_jenis = @pak_nama_jenis
+    WHERE pak_id_jenis = @pak_id_jenis;
+END;
+--- Update Paket ---
+CREATE PROCEDURE sp_updatePaket
+    @pak_id VARCHAR(10),
+    @pak_nama_pemilik VARCHAR(255),
+    @pak_id_jenis VARCHAR(10),
+    @pak_tanggal_sampai DATETIME = NULL,
+    @pak_nama_pengirim VARCHAR(255),
+    @pak_status VARCHAR(20) = 'Belum Diambil'
+AS
+BEGIN
+    -- Set nilai default untuk @pak_tanggal_sampai jika NULL
+    SET @pak_tanggal_sampai = ISNULL(@pak_tanggal_sampai, GETDATE())
+
+    -- Update the paket with the specified ID
+    UPDATE pak_mspaket
+    SET 
+        pak_nama_pemilik = @pak_nama_pemilik,
+        pak_id_jenis = @pak_id_jenis,
+        pak_tanggal_sampai = @pak_tanggal_sampai,
+        pak_nama_pengirim = @pak_nama_pengirim,
+        pak_status = @pak_status
+    WHERE pak_id = @pak_id;
+END;
+
+
+---- Delete Jenis Paket ----
+CREATE PROCEDURE sp_deleteJenisPaket
+    @pak_id_jenis VARCHAR(10)
+AS
+BEGIN
+    -- Delete the jenis paket with the specified ID
+    DELETE FROM pak_msjenispaket
+    WHERE pak_id_jenis = @pak_id_jenis;
+END;
+
+--- Delete Paket ---
+CREATE PROCEDURE sp_deletePaket
+    @pak_id VARCHAR(10)
+AS
+BEGIN
+    -- Delete the paket with the specified ID
+    DELETE FROM pak_mspaket
+    WHERE pak_id = @pak_id;
+END;
+
+---------- View Jenis Paket ------------
+CREATE VIEW vw_pak_msjenispaket AS
+SELECT pak_id_jenis, pak_nama_jenis
+FROM pak_msjenispaket;
+
+--- View Paket ---
+CREATE VIEW vw_pak_mspaket AS
+SELECT
+    p.pak_id,
+    p.pak_nama_pemilik,
+    p.pak_id_jenis,
+    j.pak_nama_jenis,
+    p.pak_tanggal_sampai,
+    p.pak_nama_pengirim,
+    p.pak_status
+FROM
+    pak_mspaket p
+INNER JOIN
+    pak_msjenispaket j ON p.pak_id_jenis = j.pak_id_jenis;
+
+
